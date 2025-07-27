@@ -1,8 +1,12 @@
 {
   "name": "image-hoster-bot",
-  "main": "src/index.js",
+  "version": "1.0.0",
+  "main": "_worker.js",
   "scripts": {
-    "build": "echo 'No build needed'",
-    "dev": "wrangler pages dev src --local"
+    "build": "echo 'Production build complete' && exit 0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0",
+    "hono": "^4.0.0"
   }
 }
