@@ -8,76 +8,92 @@ const CONFIG = {
 };
 
 async function sendMessage(chatId, text, options = {}) {
-  const payload = {
-    chat_id: chatId,
-    text,
-    parse_mode: 'Markdown',
-    ...options
-  };
-  
-  const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  
-  return await response.json();
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+        ...options
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to send message:', error);
+  }
 }
 
-async function deleteMessage(chatId, messageId) {
-  await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/deleteMessage`, {
+async function editMessage(chatId, messageId, newText) {
+  await fetch(`https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/editMessageText`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text: newText,
+      parse_mode: 'Markdown'
+    })
   });
 }
 
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    const client = new Client(CONFIG.DATABASE_URL);
 
     try {
+      // Telegram Webhook Handler
       if (url.pathname === '/telegram-webhook' && request.method === 'POST') {
         const update = await request.json();
         
         // Handle /start command
         if (update.message?.text === '/start') {
-          await sendMessage(update.message.chat.id, 
-            `🌟 *Upload Bot Ready* 🌟\n\n` +
-            `⚡ *Fast cloud hosting*\n` +
-            `📤 Just send me any image!\n\n` +
-            `_Powered by [Zero Creations](${CONFIG.CREATOR_LINK})_`);
+          await sendMessage(
+            update.message.chat.id,
+            `🌟 *Welcome to Image Hosting Bot* 🌟\n\n` +
+            `📤 Send me images to get permanent hosting links!\n\n` +
+            `⚡ *Features:*\n` +
+            `• Fast cloud storage\n` +
+            `• Direct media links\n` +
+            `• 24/7 availability\n\n` +
+            `_Created by [Zero Creations](${CONFIG.CREATOR_LINK})_`
+          );
           return new Response('OK');
         }
 
         // Handle image uploads
         if (update.message?.photo) {
           const chatId = update.message.chat.id;
+          const messageId = update.message.message_id;
           
-          // Send initial "uploading" message
-          const { result: statusMsg } = await sendMessage(chatId, 
-            `🔄 *Uploading to cloud storage...*`, 
-            { reply_to_message_id: update.message.message_id });
-          
+          // Send initial status message
+          const statusMsg = await sendMessage(
+            chatId, 
+            "🔄 *Uploading your image to cloud storage...*",
+            { reply_to_message_id: messageId }
+          );
+
+          const client = new Client(CONFIG.DATABASE_URL);
           try {
             await client.connect();
-            const photo = update.message.photo[update.message.photo.length - 1];
+            const photo = update.message.photo[update.message.photo.length - 1]; // Highest quality
             
-            // Get file info (non-blocking)
+            // Update status
+            await editMessage(chatId, statusMsg.result.message_id, "⚡ *Processing image data...*");
+            
+            // Get file info
             const fileInfo = await fetch(
               `https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/getFile?file_id=${photo.file_id}`
             ).then(r => r.json());
-            
-            // Update status
-            await sendMessage(chatId, `⚡ *Processing image...*`);
-            
-            // Download and store (fast streaming)
+
+            // Download image
             const imageUrl = `https://api.telegram.org/file/bot${CONFIG.BOT_TOKEN}/${fileInfo.result.file_path}`;
             const imageResponse = await fetch(imageUrl);
             const buffer = await imageResponse.arrayBuffer();
-            
-            // Fast DB insert
+
+            // Store in database
+            await editMessage(chatId, statusMsg.result.message_id, "🔒 *Securing your file in database...*");
             const startTime = Date.now();
             const result = await client.query(
               `INSERT INTO images(filename, content_type, data, user_id) 
@@ -90,27 +106,28 @@ export default {
               ]
             );
             const dbTime = Date.now() - startTime;
-            
-            // Delete status messages
-            await deleteMessage(chatId, statusMsg.message_id);
-            
-            // Send success message with speed info
-            await sendMessage(chatId,
+
+            // Final success message
+            await editMessage(
+              chatId, 
+              statusMsg.result.message_id,
               `✅ *Upload Complete!*\n\n` +
               `🔗 [Direct Link](https://${url.hostname}/image/${result.rows[0].id})\n` +
-              `⚡ Processed in ${dbTime}ms\n\n` +
-              `_Share this link anywhere!_`,
-              { disable_web_page_preview: true });
-              
+              `⏱ Processed in ${dbTime}ms\n\n` +
+              `_Share this link anywhere!_`
+            );
+
           } catch (error) {
             console.error('Upload error:', error);
-            await sendMessage(chatId, 
-              `❌ Upload failed\n\n` +
-              `_Error: ${error.message}_`);
+            await editMessage(
+              chatId,
+              statusMsg.result.message_id,
+              `❌ *Upload Failed*\n\n` +
+              `_Error: ${error.message}_`
+            );
           } finally {
             await client.end();
           }
-          
           return new Response('OK');
         }
       }
@@ -120,21 +137,22 @@ export default {
         const client = new Client(CONFIG.DATABASE_URL);
         try {
           await client.connect();
+          const id = url.pathname.split('/')[2];
           const result = await client.query(
             'SELECT data, content_type FROM images WHERE id = $1',
-            [url.pathname.split('/')[2]]
+            [id]
           );
-          
-          return new Response(
-            result.rows[0]?.data || 'Not found',
-            {
-              headers: {
-                'Content-Type': result.rows[0]?.content_type || 'text/plain',
-                'Cache-Control': 'public, max-age=31536000'
-              },
-              status: result.rows[0] ? 200 : 404
+
+          if (result.rows.length === 0) {
+            return new Response('Image not found', { status: 404 });
+          }
+
+          return new Response(result.rows[0].data, {
+            headers: {
+              'Content-Type': result.rows[0].content_type,
+              'Cache-Control': 'public, max-age=31536000' // 1 year cache
             }
-          );
+          });
         } finally {
           await client.end();
         }
