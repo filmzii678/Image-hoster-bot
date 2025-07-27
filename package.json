@@ -1,0 +1,7 @@
+{
+  "name": "image-hoster-bot",
+  "version": "1.0.0",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  }
+}
