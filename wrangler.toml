@@ -1,9 +1,0 @@
-name = "image-hoster-bot"
-main = "src/index.js"
-compatibility_date = "2024-03-01"
-
-[vars]
-NEON_CONNECTION_STRING = "postgresql://neondb_owner:npg_wkaTu52xezYC@ep-long-frost-aeryi5bb-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-TELEGRAM_BOT_TOKEN = "8456273643:AAE1rKr1P-JEb_5Cg8EsPJfuUulpTjYztuo"
-WELCOME_IMAGE_URL = "https://ar-hosting.pages.dev/1753585583429.jpg"
-CREATOR_LINK = "https://t.me/zerocreations"
