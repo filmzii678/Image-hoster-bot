@@ -1,4 +1,4 @@
-name = "image-hoster-bot"
+name = "image-hoster-zero-cteation"
 main = "src/index.js"
 compatibility_date = "2024-03-01"
 
